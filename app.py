@@ -10,6 +10,11 @@ from ui_components import (
     page_header, render_analytics_section, render_activity_section,
     render_suggestions_section
 )
+from dotenv import load_dotenv
+load_dotenv()
+import os
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
 from feedback.feedback import FeedbackManager
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
@@ -17,7 +22,6 @@ from docx import Document
 import io
 import base64
 import plotly.graph_objects as go
-from streamlit_lottie import st_lottie
 import requests
 from dashboard.dashboard import DashboardManager
 from config.courses import COURSES_BY_CATEGORY, RESUME_VIDEOS, INTERVIEW_VIDEOS, get_courses_for_role, get_category_for_role
@@ -125,11 +129,7 @@ class ResumeApp:
             }
 
     def load_lottie_url(self, url: str):
-        """Load Lottie animation from URL"""
-        r = requests.get(url)
-        if r.status_code != 200:
-            return None
-        return r.json()
+        pass
 
     def apply_global_styles(self):
         st.markdown("""
@@ -925,7 +925,7 @@ class ResumeApp:
                             st.success("✅ Resume generated successfully!")
 
                             # Show snowflake effect
-                            st.snow()
+        
 
                             st.download_button(
                                 label="Download Resume 📥",
@@ -1308,9 +1308,7 @@ class ResumeApp:
                             st.error(analysis['error'])
                             return
 
-                        # Show snowflake effect
-                        st.snow()
-
+                        
                         # Save resume data to database
                         resume_data = {
                             'personal_info': {
@@ -1622,7 +1620,7 @@ class ResumeApp:
             # AI Model Selection
             ai_model = st.selectbox(
                 "Select AI Model",
-                ["Google Gemini"],
+                ["text-parser-v2-jan22"],
                 help="Choose the AI model to analyze your resume"
             )
              
@@ -2355,8 +2353,7 @@ class ResumeApp:
                                             "job_role": job_role
                                         }
                                     )
-                                # show snowflake effect
-                                st.snow()
+                               
 
                                 # Complete the progress
                                 progress_bar.progress(100)
@@ -2743,7 +2740,7 @@ class ResumeApp:
         
         # Hero Section
         hero_section(
-            "Smart Resume AI",
+            "Resume Analyzer Ai",
             "Transform your career with AI-powered resume analysis and building. Get personalized insights and create professional resumes that stand out."
         )
         
@@ -2820,8 +2817,7 @@ class ResumeApp:
         
         # Admin login/logout in sidebar
         with st.sidebar:
-            st_lottie(self.load_lottie_url("https://assets5.lottiefiles.com/packages/lf20_xyadoh9h.json"), height=200, key="sidebar_animation")
-            st.title("Smart Resume AI")
+            st.title("Resume Analyzer Ai")
             st.markdown("---")
             
             # Navigation buttons
