@@ -1,0 +1,89 @@
+name: Deploy single-container app to DigitalOcean
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  IMAGE_URI: ghcr.io/${{ github.repository_owner }}/smart-ai-resume-analyzer:latest
+  GHCR_OWNER: ${{ github.repository_owner }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ env.GHCR_OWNER }}
+          password: ${{ secrets.TOKEN_GITHUB }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.single-container
+          push: true
+          tags: ${{ env.IMAGE_URI }}
+          platforms: linux/amd64
+          build-args: |
+            VITE_API_BASE_URL=/
+
+      - name: Upload compose file to Droplet
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DROPLET_IP: ${{ secrets.DROPLET_IP }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          echo "$SSH_PRIVATE_KEY" | tr -d '\r' > private_key
+          chmod 600 private_key
+
+          ssh -o StrictHostKeyChecking=no -i private_key $SSH_USER@$DROPLET_IP "sudo mkdir -p /opt/resume-analyzer /opt/resume-analyzer/data /opt/resume-analyzer/uploads /opt/config && sudo chown -R \$USER:\$USER /opt/resume-analyzer /opt/config"
+          scp -o StrictHostKeyChecking=no -i private_key docker-compose.single-container.yml $SSH_USER@$DROPLET_IP:/opt/resume-analyzer/docker-compose.yml
+
+          rm private_key
+
+      - name: Deploy on Droplet
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DROPLET_IP: ${{ secrets.DROPLET_IP }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          TOKEN_GITHUB: ${{ secrets.TOKEN_GITHUB }}
+          IMAGE_URI: ${{ env.IMAGE_URI }}
+          GHCR_OWNER: ${{ env.GHCR_OWNER }}
+        run: |
+          echo "$SSH_PRIVATE_KEY" | tr -d '\r' > private_key
+          chmod 600 private_key
+
+          ssh -o StrictHostKeyChecking=no -i private_key $SSH_USER@$DROPLET_IP << EOF
+            set -euo pipefail
+            cd /opt/resume-analyzer
+
+            touch /opt/resume-analyzer/data/resume_data.db
+            touch /opt/resume-analyzer/data/resume_analysis.db
+            mkdir -p /opt/resume-analyzer/uploads
+
+            export IMAGE_URI=${IMAGE_URI}
+
+            echo "$TOKEN_GITHUB" | docker login ghcr.io -u ${GHCR_OWNER} --password-stdin
+
+            docker compose down || true
+            docker compose pull
+            docker compose up -d
+
+            # Basic smoke check through the public container port.
+            sleep 10
+            curl -fsS http://127.0.0.1/api/status >/dev/null
+
+            docker image prune -f
+            echo "Deployment completed successfully"
+          EOF
+
+          rm private_key

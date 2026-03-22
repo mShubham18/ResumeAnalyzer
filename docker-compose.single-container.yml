@@ -1,0 +1,23 @@
+services:
+  resume-analyzer:
+    image: ${IMAGE_URI}
+    restart: always
+    ports:
+      - "80:8080"
+    env_file:
+      - /opt/config/resume-analyzer.env
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/status"]
+      interval: 20s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+    volumes:
+      - /opt/resume-analyzer/data/resume_data.db:/app/resume_data.db
+      - /opt/resume-analyzer/data/resume_analysis.db:/app/resume_analysis.db
+      - /opt/resume-analyzer/uploads:/app/uploads
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
