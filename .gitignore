@@ -15,6 +15,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+# Keep Python/package build lib directories ignored, but allow frontend source lib.
+!frontend/src/lib/
+!frontend/src/lib/**
 lib64/
 parts/
 sdist/
