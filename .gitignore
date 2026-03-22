@@ -137,3 +137,4 @@ Thumbs.db
 uploads/
 resume_data.db
 resume_analyzer
+*node_modules/
