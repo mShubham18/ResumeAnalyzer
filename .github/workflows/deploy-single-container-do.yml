@@ -3,7 +3,7 @@ name: Deploy single-container app to DigitalOcean
 on:
   push:
     branches:
-      - main
+      - master
   workflow_dispatch:
 
 env:
