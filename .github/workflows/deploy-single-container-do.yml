@@ -74,9 +74,9 @@ jobs:
 
             echo "$TOKEN_GITHUB" | docker login ghcr.io -u ${GHCR_OWNER} --password-stdin
 
-            docker compose down || true
-            docker compose pull
-            docker compose up -d
+            docker-compose down || true
+            docker-compose pull
+            docker-compose up -d
 
             # Basic smoke check through the public container port.
             sleep 10
