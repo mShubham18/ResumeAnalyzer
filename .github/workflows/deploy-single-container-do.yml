@@ -82,16 +82,16 @@ jobs:
             ATTEMPTS=30
             SLEEP_SECONDS=5
             READY=0
-            for i in $(seq 1 $ATTEMPTS); do
+            for i in \$(seq 1 \$ATTEMPTS); do
               if curl -fsS http://127.0.0.1:8081/api/status >/dev/null; then
                 READY=1
                 break
               fi
-              echo "Waiting for app readiness ($i/$ATTEMPTS)..."
-              sleep $SLEEP_SECONDS
+              echo "Waiting for app readiness (\$i/\$ATTEMPTS)..."
+              sleep \$SLEEP_SECONDS
             done
 
-            if [ "$READY" -ne 1 ]; then
+            if [ "\$READY" -ne 1 ]; then
               echo "App failed readiness check. Printing diagnostics..."
               docker-compose ps || true
               docker-compose logs --tail=200 || true
