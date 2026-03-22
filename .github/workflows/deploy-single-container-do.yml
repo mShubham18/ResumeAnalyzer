@@ -80,7 +80,7 @@ jobs:
 
             # Basic smoke check through the public container port.
             sleep 10
-            curl -fsS http://127.0.0.1/api/status >/dev/null
+            curl -fsS http://127.0.0.1:8081/api/status >/dev/null
 
             docker image prune -f
             echo "Deployment completed successfully"

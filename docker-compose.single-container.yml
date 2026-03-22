@@ -3,7 +3,7 @@ services:
     image: ${IMAGE_URI}
     restart: always
     ports:
-      - "80:8080"
+      - "8081:8080"
     env_file:
       - /opt/config/resume-analyzer.env
     healthcheck:
