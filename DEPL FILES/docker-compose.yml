@@ -1,0 +1,23 @@
+services:
+  portfolio:
+    image: ghcr.io/mshubham18/shubham-ai:latest
+    restart: always
+    ports:
+      - "4000:4000"
+    env_file:
+      - /opt/config/portfolio.env
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    volumes:
+      - /opt/portfolio-uploads:/app/server/uploads
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+

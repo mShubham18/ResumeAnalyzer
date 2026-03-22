@@ -1203,6 +1203,16 @@ class AIResumeAnalyzer:
         import traceback
         
         try:
+            def clean_markdown(text):
+                if not text:
+                    return ""
+                text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+                text = re.sub(r'__(.*?)__', r'\1', text)
+                text = re.sub(r'\*(.*?)\*', r'\1', text)
+                text = re.sub(r'_(.*?)_', r'\1', text)
+                text = re.sub(r'`([^`]+)`', r'\1', text)
+                return text.strip()
+
             job_description = None
             if role_info:
                 job_description = f"""

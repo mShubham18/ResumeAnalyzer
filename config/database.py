@@ -1,6 +1,13 @@
 import sqlite3
 from datetime import datetime
 
+
+def _add_column_if_missing(cursor, table_name, column_name, column_type):
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = [row[1] for row in cursor.fetchall()]
+    if column_name not in columns:
+        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+
 def get_database_connection():
     """Create and return a database connection"""
     conn = sqlite3.connect('resume_data.db')
@@ -15,6 +22,7 @@ def init_database():
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS resume_data (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_email TEXT,
         name TEXT NOT NULL,
         email TEXT NOT NULL,
         phone TEXT NOT NULL,
@@ -32,6 +40,8 @@ def init_database():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
+
+    _add_column_if_missing(cursor, 'resume_data', 'owner_email', 'TEXT')
     
     # Create resume_skills table
     cursor.execute('''
@@ -81,6 +91,21 @@ def init_database():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS ai_analysis (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        resume_id INTEGER,
+        owner_email TEXT,
+        model_used TEXT,
+        resume_score INTEGER,
+        job_role TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (resume_id) REFERENCES resume_data (id)
+    )
+    ''')
+
+    _add_column_if_missing(cursor, 'ai_analysis', 'owner_email', 'TEXT')
     
     conn.commit()
     conn.close()
@@ -95,11 +120,12 @@ def save_resume_data(data):
         
         cursor.execute('''
         INSERT INTO resume_data (
-            name, email, phone, linkedin, github, portfolio,
+            owner_email, name, email, phone, linkedin, github, portfolio,
             summary, target_role, target_category, education, 
             experience, projects, skills, template
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
+            data.get('owner_email', ''),
             personal_info.get('full_name', ''),
             personal_info.get('email', ''),
             personal_info.get('phone', ''),
@@ -297,6 +323,7 @@ def save_ai_analysis_data(resume_id, analysis_data):
             CREATE TABLE IF NOT EXISTS ai_analysis (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 resume_id INTEGER,
+                owner_email TEXT,
                 model_used TEXT,
                 resume_score INTEGER,
                 job_role TEXT,
@@ -304,14 +331,17 @@ def save_ai_analysis_data(resume_id, analysis_data):
                 FOREIGN KEY (resume_id) REFERENCES resume_data (id)
             )
         """)
+
+        _add_column_if_missing(cursor, 'ai_analysis', 'owner_email', 'TEXT')
         
         # Insert the analysis data
         cursor.execute("""
             INSERT INTO ai_analysis (
-                resume_id, model_used, resume_score, job_role
-            ) VALUES (?, ?, ?, ?)
+                resume_id, owner_email, model_used, resume_score, job_role
+            ) VALUES (?, ?, ?, ?, ?)
         """, (
             resume_id,
+            analysis_data.get('owner_email', ''),
             analysis_data.get('model_used', ''),
             analysis_data.get('resume_score', 0),
             analysis_data.get('job_role', '')
