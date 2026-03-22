@@ -78,9 +78,25 @@ jobs:
             docker-compose pull
             docker-compose up -d
 
-            # Basic smoke check through the public container port.
-            sleep 10
-            curl -fsS http://127.0.0.1:8081/api/status >/dev/null
+            # Wait for app readiness and capture logs if it never becomes healthy.
+            ATTEMPTS=30
+            SLEEP_SECONDS=5
+            READY=0
+            for i in $(seq 1 $ATTEMPTS); do
+              if curl -fsS http://127.0.0.1:8081/api/status >/dev/null; then
+                READY=1
+                break
+              fi
+              echo "Waiting for app readiness ($i/$ATTEMPTS)..."
+              sleep $SLEEP_SECONDS
+            done
+
+            if [ "$READY" -ne 1 ]; then
+              echo "App failed readiness check. Printing diagnostics..."
+              docker-compose ps || true
+              docker-compose logs --tail=200 || true
+              exit 1
+            fi
 
             docker image prune -f
             echo "Deployment completed successfully"
