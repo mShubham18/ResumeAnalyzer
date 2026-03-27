@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import io
+import os
 import secrets
 import traceback
 from datetime import datetime, timedelta
@@ -158,13 +159,6 @@ def _create_auth_tables() -> None:
     )
     conn.commit()
     conn.close()
-    
-    # Initialize default admin if not exists
-    try:
-        if not verify_admin("user@example.com", "password"):
-            add_admin("user@example.com", "password")
-    except Exception:
-        pass
 
 
 def _get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
@@ -677,6 +671,28 @@ def _portal_results_to_job_rows(
 async def startup_event() -> None:
     init_database()
     _create_auth_tables()
+    
+    # Ensure default admin exists
+    try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM admin WHERE email = ?", ("user@example.com",))
+        result = cursor.fetchone()
+        
+        if result[0] == 0:
+            cursor.execute("INSERT INTO admin (email, password) VALUES (?, ?)", ("user@example.com", "password"))
+            conn.commit()
+            db_path = os.getenv('DATABASE_PATH', 'resume_data.db')
+            print(f"✅ Default admin created in: {db_path}")
+        else:
+            db_path = os.getenv('DATABASE_PATH', 'resume_data.db')
+            print(f"✅ Default admin already exists in: {db_path}")
+        
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ Admin initialization error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 @app.post("/api/auth/register")
@@ -808,6 +824,32 @@ async def get_admin_me(admin: Dict[str, Any] = Depends(_require_admin)):
 @app.get("/api/status")
 async def get_status():
     return {"status": "ok", "message": "Resume Analyzer API is running"}
+
+
+@app.post("/api/admin/init")
+async def init_admin():
+    """Initialize default admin (for deployment troubleshooting)"""
+    try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
+        
+        # Check if admin exists
+        cursor.execute("SELECT COUNT(*) as count FROM admin WHERE email = ?", ("user@example.com",))
+        result = cursor.fetchone()
+        
+        if result[0] == 0:
+            cursor.execute("INSERT INTO admin (email, password) VALUES (?, ?)", ("user@example.com", "password"))
+            conn.commit()
+            conn.close()
+            return {"success": True, "message": "Default admin created successfully"}
+        else:
+            # Update existing admin password
+            cursor.execute("UPDATE admin SET password = ? WHERE email = ?", ("password", "user@example.com"))
+            conn.commit()
+            conn.close()
+            return {"success": True, "message": "Default admin password reset to 'password'"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @app.post("/api/upload")
 async def upload_resume(

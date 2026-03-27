@@ -1,4 +1,5 @@
 import sqlite3
+import os
 from datetime import datetime
 
 
@@ -10,7 +11,9 @@ def _add_column_if_missing(cursor, table_name, column_name, column_type):
 
 def get_database_connection():
     """Create and return a database connection"""
-    conn = sqlite3.connect('resume_data.db')
+    # Check for environment variable first, then fallback to default
+    db_path = os.getenv('DATABASE_PATH', 'resume_data.db')
+    conn = sqlite3.connect(db_path)
     return conn
 
 def init_database():
