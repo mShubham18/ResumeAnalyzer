@@ -110,3 +110,44 @@ export interface JobPortalResult {
   title: string;
   url: string;
 }
+
+export interface AdminAnalytics {
+  overview: {
+    total_resumes: number;
+    total_users: number;
+    total_analyses: number;
+    avg_ats_score: number;
+    avg_ai_score: number;
+  };
+  daily_uploads: Array<{ date: string; count: number }>;
+  category_distribution: Array<{ category: string; count: number }>;
+  top_roles: Array<{ role: string; count: number }>;
+  model_usage: Array<{ model: string; count: number }>;
+  scores_by_category: Array<{ category: string; avg_ats_score: number; count: number }>;
+  ai_job_roles: Array<{ role: string; count: number }>;
+}
+
+export interface ReportRecord {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  owner_email: string;
+  target_role: string;
+  target_category: string;
+  linkedin: string;
+  github: string;
+  created_at: string;
+  ats_score: number;
+  ai_score: number;
+  model_used: string;
+}
+
+export interface AdminReports {
+  records: ReportRecord[];
+  filters: {
+    years: string[];
+    categories: string[];
+    roles: string[];
+  };
+}

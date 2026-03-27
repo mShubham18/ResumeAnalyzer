@@ -112,6 +112,12 @@ export default function AuthPage() {
           >
             {mode === "login" ? "Need an account? Register" : "Already have an account? Sign in"}
           </button>
+
+          <div style={{ marginTop: "1rem", textAlign: "center", paddingTop: "1rem", borderTop: "1px solid var(--line)" }}>
+            <Link to="/admin-login" style={{ color: "var(--muted)", fontSize: "0.875rem", textDecoration: "none" }}>
+              🛡️ Admin Login
+            </Link>
+          </div>
         </div>
       </div>
     </div>

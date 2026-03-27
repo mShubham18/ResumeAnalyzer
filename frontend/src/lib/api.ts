@@ -1,5 +1,7 @@
 import axios from "axios";
 import type {
+  AdminAnalytics,
+  AdminReports,
   AiAnalysis,
   AuthResponse,
   DashboardSummary,
@@ -128,4 +130,60 @@ export async function searchJobs(payload: {
     jobs: response.data.results,
     portals: response.data.portals || [],
   };
+}
+
+export async function fetchAdminAnalytics(): Promise<AdminAnalytics> {
+  const token = localStorage.getItem("admin_token");
+  if (!token) {
+    throw new Error("Admin authentication required");
+  }
+  
+  const response = await axios.get<{ success: boolean; data: AdminAnalytics }>(
+    `${API_BASE_URL}/api/admin/analytics`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  return response.data.data;
+}
+
+export async function adminLogin(email: string, password: string): Promise<{ token: string; admin: { email: string } }> {
+  const response = await http.post<{ success: boolean; token: string; admin: { email: string } }>(
+    "/api/admin/login",
+    { email, password }
+  );
+  return response.data;
+}
+
+export async function adminLogout(): Promise<void> {
+  const token = localStorage.getItem("admin_token");
+  if (token) {
+    await http.post("/api/admin/logout", {}, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+}
+
+export async function fetchAdminReports(filters?: {
+  year?: string;
+  category?: string;
+  role?: string;
+}): Promise<AdminReports> {
+  const token = localStorage.getItem("admin_token");
+  if (!token) {
+    throw new Error("Admin authentication required");
+  }
+  
+  const params = new URLSearchParams();
+  if (filters?.year) params.append("year", filters.year);
+  if (filters?.category) params.append("category", filters.category);
+  if (filters?.role) params.append("role", filters.role);
+  
+  const response = await axios.get<{ success: boolean; data: AdminReports }>(
+    `${API_BASE_URL}/api/admin/reports?${params.toString()}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  return response.data.data;
 }

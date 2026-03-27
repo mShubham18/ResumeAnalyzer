@@ -14,11 +14,13 @@ import uvicorn
 
 # Import existing application logic
 from config.database import (
+    add_admin,
     get_database_connection,
     init_database,
     save_ai_analysis_data,
     save_analysis_data,
     save_resume_data,
+    verify_admin,
 )
 from config.job_roles import JOB_ROLES
 from jobs.job_portals import JobPortal
@@ -142,8 +144,27 @@ def _create_auth_tables() -> None:
         )
         """
     )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS admin_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            admin_email TEXT NOT NULL,
+            token_hash TEXT NOT NULL,
+            expires_at TIMESTAMP NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     conn.commit()
     conn.close()
+    
+    # Initialize default admin if not exists
+    try:
+        if not verify_admin("user@example.com", "password"):
+            add_admin("user@example.com", "password")
+    except Exception:
+        pass
 
 
 def _get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
@@ -230,6 +251,138 @@ def _require_user(authorization: Optional[str] = Header(default=None)) -> Dict[s
         raise HTTPException(status_code=401, detail="Session expired or invalid")
 
     return user
+
+
+def _create_admin_session(admin_email: str) -> str:
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    expires_at = datetime.utcnow() + timedelta(hours=SESSION_DURATION_HOURS)
+
+    conn = get_database_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO admin_sessions (admin_email, token_hash, expires_at, is_active)
+        VALUES (?, ?, ?, 1)
+        """,
+        (admin_email, token_hash, expires_at.isoformat()),
+    )
+    conn.commit()
+    conn.close()
+    return token
+
+
+def _get_admin_from_token(token: str) -> Optional[Dict[str, Any]]:
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    conn = get_database_connection()
+    conn.row_factory = _dict_factory
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT admin_email, expires_at, is_active
+        FROM admin_sessions
+        WHERE token_hash = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (token_hash,),
+    )
+    record = cursor.fetchone()
+    conn.close()
+
+    if not record:
+        return None
+
+    if not record.get("is_active"):
+        return None
+
+    try:
+        expires_at = datetime.fromisoformat(record["expires_at"])
+    except Exception:
+        return None
+
+    if datetime.utcnow() > expires_at:
+        return None
+
+    return {"email": record["admin_email"]}
+
+
+def _require_admin(authorization: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    token = _parse_bearer_token(authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="Admin authorization required")
+
+    admin = _get_admin_from_token(token)
+    if not admin:
+        raise HTTPException(status_code=401, detail="Invalid admin session")
+
+    return admin
+
+
+def _create_admin_session(admin_email: str) -> str:
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    expires_at = datetime.utcnow() + timedelta(hours=SESSION_DURATION_HOURS)
+
+    conn = get_database_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO admin_sessions (admin_email, token_hash, expires_at, is_active)
+        VALUES (?, ?, ?, 1)
+        """,
+        (admin_email, token_hash, expires_at.isoformat()),
+    )
+    conn.commit()
+    conn.close()
+    return token
+
+
+def _get_admin_from_token(token: str) -> Optional[Dict[str, Any]]:
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    conn = get_database_connection()
+    conn.row_factory = _dict_factory
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT admin_email, expires_at, is_active
+        FROM admin_sessions
+        WHERE token_hash = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (token_hash,),
+    )
+    record = cursor.fetchone()
+    conn.close()
+
+    if not record:
+        return None
+
+    if not record.get("is_active"):
+        return None
+
+    try:
+        expires_at = datetime.fromisoformat(record["expires_at"])
+    except Exception:
+        return None
+
+    if datetime.utcnow() > expires_at:
+        return None
+
+    return {"email": record["admin_email"]}
+
+
+def _require_admin(authorization: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    token = _parse_bearer_token(authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="Admin authorization required")
+
+    admin = _get_admin_from_token(token)
+    if not admin:
+        raise HTTPException(status_code=401, detail="Invalid admin session")
+
+    return admin
 
 
 def _find_role_info(category: str, role: str) -> Dict[str, Any]:
@@ -615,6 +768,43 @@ async def logout_user(authorization: Optional[str] = Header(default=None)):
     conn.close()
     return {"success": True}
 
+
+@app.post("/api/admin/login")
+async def admin_login(request: AuthLoginRequest):
+    """Admin login endpoint"""
+    if not verify_admin(request.email, request.password):
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    
+    token = _create_admin_session(request.email)
+    return {
+        "success": True,
+        "token": token,
+        "admin": {"email": request.email}
+    }
+
+
+@app.post("/api/admin/logout")
+async def admin_logout(authorization: Optional[str] = Header(default=None)):
+    """Admin logout endpoint"""
+    token = _parse_bearer_token(authorization)
+    if token:
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        conn = get_database_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE admin_sessions SET is_active = 0 WHERE token_hash = ?", (token_hash,))
+        conn.commit()
+        conn.close()
+    return {"success": True}
+
+
+@app.get("/api/admin/me")
+async def get_admin_me(admin: Dict[str, Any] = Depends(_require_admin)):
+    """Get current admin info"""
+    return {
+        "success": True,
+        "admin": admin
+    }
+
 @app.get("/api/status")
 async def get_status():
     return {"status": "ok", "message": "Resume Analyzer API is running"}
@@ -957,6 +1147,219 @@ async def get_recent_submissions(current_user: Dict[str, Any] = Depends(_require
     rows = cursor.fetchall()
     conn.close()
     return {"success": True, "items": rows}
+
+
+@app.get("/api/admin/analytics")
+async def get_admin_analytics(admin: Dict[str, Any] = Depends(_require_admin)):
+    """Get admin analytics data for dashboard (admin only)"""
+    conn = get_database_connection()
+    conn.row_factory = _dict_factory
+    cursor = conn.cursor()
+    
+    # Total statistics
+    cursor.execute("SELECT COUNT(*) as count FROM resume_data")
+    total_resumes = cursor.fetchone()["count"]
+    
+    cursor.execute("SELECT COUNT(*) as count FROM users")
+    total_users = cursor.fetchone()["count"]
+    
+    cursor.execute("SELECT COUNT(*) as count FROM ai_analysis")
+    total_analyses = cursor.fetchone()["count"]
+    
+    cursor.execute("SELECT ROUND(AVG(ats_score), 1) as avg FROM resume_analysis WHERE ats_score IS NOT NULL")
+    avg_ats_score = cursor.fetchone()["avg"] or 0
+    
+    # Resume uploads over time (last 30 days)
+    cursor.execute("""
+        SELECT DATE(created_at) as date, COUNT(*) as count
+        FROM resume_data
+        WHERE created_at >= date('now', '-30 days')
+        GROUP BY DATE(created_at)
+        ORDER BY date
+    """)
+    daily_uploads = cursor.fetchall()
+    
+    # Distribution by target category
+    cursor.execute("""
+        SELECT target_category as category, COUNT(*) as count
+        FROM resume_data
+        WHERE target_category IS NOT NULL AND target_category != ''
+        GROUP BY target_category
+        ORDER BY count DESC
+    """)
+    category_distribution = cursor.fetchall()
+    
+    # Top 10 job roles
+    cursor.execute("""
+        SELECT target_role as role, COUNT(*) as count
+        FROM resume_data
+        WHERE target_role IS NOT NULL AND target_role != ''
+        GROUP BY target_role
+        ORDER BY count DESC
+        LIMIT 10
+    """)
+    top_roles = cursor.fetchall()
+    
+    # AI model usage distribution
+    cursor.execute("""
+        SELECT model_used as model, COUNT(*) as count
+        FROM ai_analysis
+        WHERE model_used IS NOT NULL
+        GROUP BY model_used
+        ORDER BY count DESC
+    """)
+    model_usage = cursor.fetchall()
+    
+    # Average scores by category
+    cursor.execute("""
+        SELECT 
+            rd.target_category as category,
+            ROUND(AVG(ra.ats_score), 1) as avg_ats_score,
+            COUNT(*) as count
+        FROM resume_data rd
+        LEFT JOIN resume_analysis ra ON ra.resume_id = rd.id
+        WHERE rd.target_category IS NOT NULL 
+            AND rd.target_category != ''
+            AND ra.ats_score IS NOT NULL
+        GROUP BY rd.target_category
+        ORDER BY count DESC
+    """)
+    scores_by_category = cursor.fetchall()
+    
+    # Top AI analyzed job roles
+    cursor.execute("""
+        SELECT job_role as role, COUNT(*) as count
+        FROM ai_analysis
+        WHERE job_role IS NOT NULL AND job_role != ''
+        GROUP BY job_role
+        ORDER BY count DESC
+        LIMIT 10
+    """)
+    ai_job_roles = cursor.fetchall()
+    
+    # Average AI scores
+    cursor.execute("""
+        SELECT ROUND(AVG(resume_score), 1) as avg_score
+        FROM ai_analysis
+        WHERE resume_score IS NOT NULL
+    """)
+    avg_ai_score = cursor.fetchone()["avg_score"] or 0
+    
+    conn.close()
+    
+    return {
+        "success": True,
+        "data": {
+            "overview": {
+                "total_resumes": total_resumes,
+                "total_users": total_users,
+                "total_analyses": total_analyses,
+                "avg_ats_score": avg_ats_score,
+                "avg_ai_score": avg_ai_score
+            },
+            "daily_uploads": daily_uploads,
+            "category_distribution": category_distribution,
+            "top_roles": top_roles,
+            "model_usage": model_usage,
+            "scores_by_category": scores_by_category,
+            "ai_job_roles": ai_job_roles
+        }
+    }
+
+
+@app.get("/api/admin/reports")
+async def get_admin_reports(
+    admin: Dict[str, Any] = Depends(_require_admin),
+    year: Optional[str] = None,
+    category: Optional[str] = None,
+    role: Optional[str] = None,
+):
+    """Get filtered reports data for admin (admin only)"""
+    conn = get_database_connection()
+    conn.row_factory = _dict_factory
+    cursor = conn.cursor()
+    
+    # Build dynamic query based on filters
+    query = """
+        SELECT 
+            rd.id,
+            rd.name,
+            rd.email,
+            rd.phone,
+            rd.owner_email,
+            rd.target_role,
+            rd.target_category,
+            rd.linkedin,
+            rd.github,
+            rd.created_at,
+            ra.ats_score,
+            ai.resume_score as ai_score,
+            ai.model_used
+        FROM resume_data rd
+        LEFT JOIN resume_analysis ra ON ra.resume_id = rd.id
+        LEFT JOIN ai_analysis ai ON ai.resume_id = rd.id
+        WHERE 1=1
+    """
+    
+    params = []
+    
+    # Apply filters
+    if year:
+        query += " AND strftime('%Y', rd.created_at) = ?"
+        params.append(year)
+    
+    if category:
+        query += " AND rd.target_category = ?"
+        params.append(category)
+    
+    if role:
+        query += " AND rd.target_role = ?"
+        params.append(role)
+    
+    query += " ORDER BY rd.created_at DESC"
+    
+    cursor.execute(query, params)
+    records = cursor.fetchall()
+    
+    # Get unique filter options
+    cursor.execute("""
+        SELECT DISTINCT strftime('%Y', created_at) as year
+        FROM resume_data
+        WHERE created_at IS NOT NULL
+        ORDER BY year DESC
+    """)
+    available_years = [row["year"] for row in cursor.fetchall() if row["year"]]
+    
+    cursor.execute("""
+        SELECT DISTINCT target_category
+        FROM resume_data
+        WHERE target_category IS NOT NULL AND target_category != ''
+        ORDER BY target_category
+    """)
+    available_categories = [row["target_category"] for row in cursor.fetchall()]
+    
+    cursor.execute("""
+        SELECT DISTINCT target_role
+        FROM resume_data
+        WHERE target_role IS NOT NULL AND target_role != ''
+        ORDER BY target_role
+    """)
+    available_roles = [row["target_role"] for row in cursor.fetchall()]
+    
+    conn.close()
+    
+    return {
+        "success": True,
+        "data": {
+            "records": records,
+            "filters": {
+                "years": available_years,
+                "categories": available_categories,
+                "roles": available_roles
+            }
+        }
+    }
+
 
 if __name__ == "__main__":
     uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)
